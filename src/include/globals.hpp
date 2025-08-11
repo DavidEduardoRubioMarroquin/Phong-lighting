@@ -2,6 +2,8 @@
 
 #include <cstdint>
 
+inline constexpr float PI{3.141592653589793};
+
 namespace Window{
     inline constexpr uint16_t g_width{800};
     inline constexpr uint16_t g_height{600};

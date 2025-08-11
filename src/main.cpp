@@ -14,7 +14,6 @@
 #include "camera.hpp"
 #include "globals.hpp"
 #include "shaders.hpp"
-#include "clock.hpp"
 
 Camera camera{glm::vec3(0.0f, 1.0f, 2.5f)};
 float lastX{Window::g_width/ 2.0f};
@@ -48,21 +47,23 @@ void init_shader_programs();
 int main(){
     auto window{setup_GLFW()};
 
+    #pragma warning(push, 0) //type cast safety warning
     if(!gladLoadGLLoader( (GLADloadproc)glfwGetProcAddress )) {
         std::println("failed to initialize glad");
         return -1;
     }
+    #pragma warning(pop)
     glEnable(GL_DEPTH_TEST);
 
     init_buffers();
     init_shader_programs();
-    
+
     glUseProgram(shader_programs[CUBE_SHADER]);
     glUniform3f(shader_uniforms[CUBE_SHADER][OBJECT_COLOR], 1.0f, 1.0f, 1.0f);
     glUniform3f(shader_uniforms[CUBE_SHADER][LIGHT_COLOR], 1.0f, 0.5f, 0.31f);
     glUseProgram(0);
     
-    
+    float radians = 0;
     while(!glfwWindowShouldClose(window)){
         
         float currentFrame = static_cast<float>(glfwGetTime());
@@ -75,17 +76,17 @@ int main(){
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         
         glm::mat4 projection{glm::perspective(glm::radians(camera.m_zoom),
-            static_cast<float>(Window::g_width)/static_cast<float>(Window::g_height), 0.1f, 100.0f)};
-            glm::mat4 view{camera.getViewMatrix()};
-            glm::mat4 model{glm::mat4(1.0f)};
+        static_cast<float>(Window::g_width)/static_cast<float>(Window::g_height), 0.1f, 100.0f)};
+        glm::mat4 view{camera.getViewMatrix()};
+        glm::mat4 model{glm::mat4(1.0f)};
             
-            glUseProgram(shader_programs[CUBE_SHADER]);
-            glUniformMatrix4fv(shader_uniforms[CUBE_SHADER][VIEW], 1, GL_FALSE, glm::value_ptr(view));
-            glUniformMatrix4fv(shader_uniforms[CUBE_SHADER][PROJECTION], 1, GL_FALSE, glm::value_ptr(projection));
-            glUniformMatrix4fv(shader_uniforms[CUBE_SHADER][MODEL], 1, GL_FALSE, glm::value_ptr(model));
-            lightPos.x = std::sinf(currentFrame);
-            glUniform3fv(shader_uniforms[CUBE_SHADER][LIGHT_POS], 1, glm::value_ptr(lightPos));
-            glUniform3fv(shader_uniforms[CUBE_SHADER][VIEW_POS], 1, glm::value_ptr(camera.m_cameraPos));
+        glUseProgram(shader_programs[CUBE_SHADER]);
+        glUniformMatrix4fv(shader_uniforms[CUBE_SHADER][VIEW], 1, GL_FALSE, glm::value_ptr(view));
+        glUniformMatrix4fv(shader_uniforms[CUBE_SHADER][PROJECTION], 1, GL_FALSE, glm::value_ptr(projection));
+        glUniformMatrix4fv(shader_uniforms[CUBE_SHADER][MODEL], 1, GL_FALSE, glm::value_ptr(model));
+        lightPos.x = std::sinf(currentFrame * PI/2);
+        lightPos.z = std::cosf(currentFrame * PI/2);
+        glUniform3fv(shader_uniforms[CUBE_SHADER][LIGHT_POS], 1, glm::value_ptr(lightPos));
         glBindVertexArray(VAOs[CUBE_VAO]);
         glDrawArrays(GL_TRIANGLES, 0 ,36);
         
@@ -95,6 +96,7 @@ int main(){
         model = glm::mat4(1.0f);
         model = glm::translate(model, lightPos);
         model = glm::scale(model, glm::vec3(0.2f));
+        model = glm::rotate(model, currentFrame * PI/2, {0.0, 1.0, 0.0});
         glUniformMatrix4fv(shader_uniforms[LIGHT_SHADER][MODEL], 1, GL_FALSE, glm::value_ptr(model));
         
         glBindVertexArray(VAOs[LIGHT_VAO]);

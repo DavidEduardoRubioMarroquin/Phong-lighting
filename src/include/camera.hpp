@@ -43,8 +43,8 @@ public:
         glm::vec3 up = glm::vec3(0.0f, 1.0f, 0.0f),
         float yaw = Defaults::YAW,
         float pitch = Defaults::PITCH)
-        : m_cameraFront{Defaults::FRONT}
-        , m_cameraPos{cameraPos}
+        : m_cameraPos{cameraPos}
+        , m_cameraFront{Defaults::FRONT}
         , m_worldUp{up}
         , m_yaw{yaw}
         , m_pitch{pitch}
@@ -52,7 +52,7 @@ public:
         updateCameraVectors();
     }
 
-    explicit Camera(
+    [[maybe_unused]]explicit Camera(
         float posX = 0.0f,
         float posY = 0.0f,
         float posZ = 0.0f,
@@ -61,8 +61,8 @@ public:
         float upZ = 0.0f,
         float yaw = Defaults::YAW,
         float pitch = Defaults::PITCH)
-        : m_cameraFront{Defaults::FRONT}
-        , m_cameraPos{glm::vec3(posX, posY, posZ)}
+        : m_cameraPos{glm::vec3(posX, posY, posZ)}
+        , m_cameraFront{Defaults::FRONT}
         , m_worldUp{glm::vec3(upX, upY, upZ)}
         , m_yaw{yaw}
         , m_pitch{pitch}
@@ -90,8 +90,7 @@ public:
             case RIGHT:
                 m_cameraPos -= m_cameraRight * velocity;
                 break;
-
-            
+            case MAX_MOVE: break;
         }
     }
 
