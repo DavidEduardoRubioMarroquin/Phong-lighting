@@ -7,31 +7,43 @@
 #include <glm/gtc/type_ptr.hpp>
 #pragma warning(pop)
 #include <print>
+#include <vector>
+#include <array>
+#include <span>
 
 #include "camera.hpp"
 #include "globals.hpp"
 #include "shaders.hpp"
+#include "clock.hpp"
 
-
-Camera camera{glm::vec3(0.0f, 0.0f, 3.0f)};
+Camera camera{glm::vec3(0.0f, 1.0f, 2.5f)};
 float lastX{Window::g_width/ 2.0f};
 float lastY{Window::g_height/ 2.0f};
 bool firstMouse{true};
 
-struct vertexBufferIDs{
-    uint32_t VAO{};
-    uint32_t VBO{};
-    uint32_t EBO{};
-};
+enum VAOs_index{
+    CUBE_VAO,
+    LIGHT_VAO,
+    MAX_VAOS};
+std::array<uint32_t, MAX_VAOS> VAOs{};
+
+enum Shader_Program{
+    CUBE_SHADER,
+    LIGHT_SHADER,
+    MAX_SHADER_PROGRAMS};
+std::array<uint32_t, MAX_SHADER_PROGRAMS> shader_programs{};
+std::array<std::vector<int32_t>, MAX_SHADER_PROGRAMS> shader_uniforms{};
 
 float deltaTime{0.0f};
 float lastFrame{0.0f};
 
 glm::vec3 lightPos{1.2f, 1.0f, 2.0f};
 
-GLFWwindow* setup_GLFW();
 
+GLFWwindow* setup_GLFW();
 void process_input(GLFWwindow*);
+void init_buffers();
+void init_shader_programs();
 
 int main(){
     auto window{setup_GLFW()};
@@ -42,124 +54,139 @@ int main(){
     }
     glEnable(GL_DEPTH_TEST);
 
-    vertexBufferIDs cube;
-    glGenVertexArrays(1, &cube.VAO);
-    glGenBuffers(1, &cube.VBO);
-    glBindVertexArray(cube.VAO);
-    glBindBuffer(GL_ARRAY_BUFFER, cube.VBO);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(cube_vertices), cube_vertices, GL_STATIC_DRAW);
-    glVertexAttribPointer(0, 3, GL_FLOAT, false, sizeof(float) * 3, (void*)0);
-    glEnableVertexAttribArray(0);
-
-    uint32_t light_VAO; 
-    glGenVertexArrays(1, &light_VAO);
-    glBindVertexArray(light_VAO);
-    glBindBuffer(GL_ARRAY_BUFFER, cube.VBO);
-    glVertexAttribPointer(0, 3, GL_FLOAT, false, sizeof(float) * 3, (void*) 0);
-    glEnableVertexAttribArray(0);
-
-    glBindVertexArray(0);
-
-    uint32_t cube_vertex_shader{glCreateShader(GL_VERTEX_SHADER)};
-    uint32_t cube_fragment_shader{glCreateShader(GL_FRAGMENT_SHADER)};
-    uint32_t light_fragment_shader{glCreateShader(GL_FRAGMENT_SHADER)};
-
-    int32_t success{};
-    char info_log[512];
-
-    auto check_shader_compile = [&success, &info_log](uint32_t shader){
-        glGetShaderiv(shader, GL_COMPILE_STATUS, &success);
-        if(!success){
-            glGetShaderInfoLog(shader, 512, nullptr, info_log);
-            std::println("Failed to compile shader: \n{}", info_log);
-        }
-    };
-
-    glShaderSource(cube_vertex_shader, 1, &cube_vertex_shader_source, nullptr);
-    glCompileShader(cube_vertex_shader);
-    check_shader_compile(cube_vertex_shader);
-    glShaderSource(cube_fragment_shader, 1, &cube_fragment_shader_source, nullptr);
-    glCompileShader(cube_fragment_shader);
-    check_shader_compile(cube_fragment_shader);
-    glShaderSource(light_fragment_shader, 1, &light_fragment_shader_source, nullptr);
-    glCompileShader(light_fragment_shader);
-    check_shader_compile(light_fragment_shader);
-
-    uint32_t cube_shader_program{glCreateProgram()};
-    uint32_t light_shader_program{glCreateProgram()};
-
-    glAttachShader(cube_shader_program, cube_vertex_shader);
-    glAttachShader(cube_shader_program, cube_fragment_shader);
-    glAttachShader(light_shader_program, cube_vertex_shader);
-    glAttachShader(light_shader_program, light_fragment_shader);
-
-    glLinkProgram(cube_shader_program);
-    glLinkProgram(light_shader_program);
-
-    auto check_program_link = [&success, &info_log](uint32_t ID){
-        glGetProgramiv(ID, GL_LINK_STATUS, &success);
-        if(!success){
-            glGetProgramInfoLog(ID, 512, nullptr, info_log);
-            std::println("Failed to link program: \n{}", info_log);
-        }
-    };
-
-    check_program_link(cube_shader_program);
-    check_program_link(light_shader_program);
-
-    glDeleteShader(cube_vertex_shader);
-    glDeleteShader(cube_fragment_shader);
-    glDeleteShader(light_fragment_shader);
+    init_buffers();
+    init_shader_programs();
     
-    glUseProgram(cube_shader_program);
-    float color1[]{1.0f, 1.0f, 1.0f};
-    float color2[]{1.0f, 0.5f, 0.31f};
-    glUniform3fv(glGetUniformLocation(cube_shader_program, "objectColor"), 1, color2);
-    glUniform3fv(glGetUniformLocation(cube_shader_program, "lightColor"), 1, color1);
+    glUseProgram(shader_programs[CUBE_SHADER]);
+    glUniform3f(shader_uniforms[CUBE_SHADER][OBJECT_COLOR], 1.0f, 1.0f, 1.0f);
+    glUniform3f(shader_uniforms[CUBE_SHADER][LIGHT_COLOR], 1.0f, 0.5f, 0.31f);
     glUseProgram(0);
-
-
-
+    
+    
     while(!glfwWindowShouldClose(window)){
+        
         float currentFrame = static_cast<float>(glfwGetTime());
         deltaTime = lastFrame - currentFrame;
         lastFrame = currentFrame;
-
+        
         process_input(window);
-
+        
         glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         
         glm::mat4 projection{glm::perspective(glm::radians(camera.m_zoom),
-        static_cast<float>(Window::g_width)/static_cast<float>(Window::g_height),
-        0.1f, 100.0f)};
-        glm::mat4 view{camera.getViewMatrix()};
-        glm::mat4 model{glm::mat4(1.0f)};
-
-        glUseProgram(cube_shader_program);
-        glUniformMatrix4fv(glGetUniformLocation(cube_shader_program, "view"), 1, GL_FALSE, glm::value_ptr(view));
-        glUniformMatrix4fv(glGetUniformLocation(cube_shader_program, "projection"), 1, GL_FALSE, glm::value_ptr(projection));
-        glUniformMatrix4fv(glGetUniformLocation(cube_shader_program, "model"), 1, GL_FALSE, glm::value_ptr(model));
-        
-        glBindVertexArray(cube.VAO);
+            static_cast<float>(Window::g_width)/static_cast<float>(Window::g_height), 0.1f, 100.0f)};
+            glm::mat4 view{camera.getViewMatrix()};
+            glm::mat4 model{glm::mat4(1.0f)};
+            
+            glUseProgram(shader_programs[CUBE_SHADER]);
+            glUniformMatrix4fv(shader_uniforms[CUBE_SHADER][VIEW], 1, GL_FALSE, glm::value_ptr(view));
+            glUniformMatrix4fv(shader_uniforms[CUBE_SHADER][PROJECTION], 1, GL_FALSE, glm::value_ptr(projection));
+            glUniformMatrix4fv(shader_uniforms[CUBE_SHADER][MODEL], 1, GL_FALSE, glm::value_ptr(model));
+            lightPos.x = std::sinf(currentFrame);
+            glUniform3fv(shader_uniforms[CUBE_SHADER][LIGHT_POS], 1, glm::value_ptr(lightPos));
+            glUniform3fv(shader_uniforms[CUBE_SHADER][VIEW_POS], 1, glm::value_ptr(camera.m_cameraPos));
+        glBindVertexArray(VAOs[CUBE_VAO]);
         glDrawArrays(GL_TRIANGLES, 0 ,36);
         
-        glUseProgram(light_shader_program);
-        glUniformMatrix4fv(glGetUniformLocation(light_shader_program, "view"), 1, GL_FALSE, glm::value_ptr(view));
-        glUniformMatrix4fv(glGetUniformLocation(light_shader_program, "projection"), 1, GL_FALSE, glm::value_ptr(projection));
+        glUseProgram(shader_programs[LIGHT_SHADER]);
+        glUniformMatrix4fv(shader_uniforms[LIGHT_SHADER][VIEW], 1, GL_FALSE, glm::value_ptr(view));
+        glUniformMatrix4fv(shader_uniforms[LIGHT_SHADER][PROJECTION], 1, GL_FALSE, glm::value_ptr(projection));
         model = glm::mat4(1.0f);
         model = glm::translate(model, lightPos);
         model = glm::scale(model, glm::vec3(0.2f));
-        glUniformMatrix4fv(glGetUniformLocation(light_shader_program, "model"), 1, GL_FALSE, glm::value_ptr(model));
+        glUniformMatrix4fv(shader_uniforms[LIGHT_SHADER][MODEL], 1, GL_FALSE, glm::value_ptr(model));
         
-        glBindVertexArray(light_VAO);
+        glBindVertexArray(VAOs[LIGHT_VAO]);
         glDrawArrays(GL_TRIANGLES, 0, 36);
-
         
         glfwSwapBuffers(window);
         glfwPollEvents();
     }
+
     glfwTerminate();
+}
+
+void fill_uniforms(Shader_Program program, std::span<const char* const> uniforms){
+    for(const char* uniform : uniforms){
+        shader_uniforms[program].push_back(glGetUniformLocation(shader_programs[program], uniform));
+    }
+}
+
+void link_program(Shader_Program program, uint32_t vertex, uint32_t fragment){
+    glAttachShader(shader_programs[program], vertex);
+    glAttachShader(shader_programs[program], fragment);
+    glLinkProgram(shader_programs[program]);
+
+    int32_t success;
+    char info_log[512];
+    glGetProgramiv(shader_programs[program], GL_LINK_STATUS, &success);
+    if(!success){
+        glGetProgramInfoLog(shader_programs[program], 512, nullptr, info_log);
+        std::println("Failed to link program: \n{}", info_log);
+    }
+}
+
+uint32_t compile_shader(GLenum type, const char* source){
+    uint32_t shader{glCreateShader(type)};
+    glShaderSource(shader, 1, &source, nullptr);
+    glCompileShader(shader);
+
+    int32_t success;
+    char info_log[512];
+
+    glGetShaderiv(shader, GL_COMPILE_STATUS, &success);
+    if(!success){
+        glGetShaderInfoLog(shader, 512, nullptr, info_log);
+        std::println("Failed to compile shader: \n{}", info_log);
+    }
+    return shader;
+}
+
+void init_shader_programs(){
+    uint32_t cube_vertex{compile_shader(GL_VERTEX_SHADER, cube_vertex_shader_source)};
+    uint32_t cube_fragment{compile_shader(GL_FRAGMENT_SHADER, cube_fragment_shader_source)};
+    uint32_t light_fragment{compile_shader(GL_FRAGMENT_SHADER, light_fragment_shader_source)};
+
+    shader_programs[CUBE_SHADER] = glCreateProgram();
+    shader_programs[LIGHT_SHADER] = glCreateProgram();
+
+    link_program(CUBE_SHADER, cube_vertex, cube_fragment);
+    link_program(LIGHT_SHADER, cube_vertex, light_fragment);
+
+    fill_uniforms(CUBE_SHADER, cube_vertex_shader_uniforms);
+    fill_uniforms(CUBE_SHADER, cube_fragment_shader_uniforms);
+    fill_uniforms(LIGHT_SHADER, cube_vertex_shader_uniforms);
+
+    
+    glDeleteShader(cube_vertex);
+    glDeleteShader(cube_fragment);
+    glDeleteShader(light_fragment);
+}
+
+void init_buffers(){
+    enum VBOs{
+        CUBE_VERTICES,
+        MAX_VBOS
+    };
+    std::array<uint32_t, MAX_VBOS> VBOs{};
+
+    glGenVertexArrays(2, VAOs.data());
+    glGenBuffers(1, VBOs.data());
+
+    glBindBuffer(GL_ARRAY_BUFFER, VBOs[CUBE_VERTICES]);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(cube_vertices), cube_vertices, GL_STATIC_DRAW);
+
+    for(uint32_t VAO : VAOs){
+        glBindVertexArray(VAO);
+        glBindBuffer(GL_ARRAY_BUFFER,VBOs[CUBE_VERTICES]);
+        glVertexAttribPointer(0, 3, GL_FLOAT, false, sizeof(float) * 6, (void*)0);
+        glEnableVertexAttribArray(0);
+    }
+
+    glBindVertexArray(VAOs[CUBE_VAO]);
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)(3 * sizeof(float)));
+    glEnableVertexAttribArray(1);
 }
 
 void process_input(GLFWwindow* window){
