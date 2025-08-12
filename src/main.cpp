@@ -63,7 +63,6 @@ int main(){
     glUniform3f(shader_uniforms[CUBE_SHADER][LIGHT_COLOR], 1.0f, 0.5f, 0.31f);
     glUseProgram(0);
     
-    float radians = 0;
     while(!glfwWindowShouldClose(window)){
         
         float currentFrame = static_cast<float>(glfwGetTime());

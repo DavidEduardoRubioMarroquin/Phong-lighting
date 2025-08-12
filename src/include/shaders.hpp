@@ -61,8 +61,8 @@ inline const constexpr char* cube_fragment_shader_source{R"(
     }
 )"};
 
-inline constexpr std::array<const char*, 4> cube_fragment_shader_uniforms{{
-    "objectColor", "lightColor", "lightPos", "viewPos"
+inline constexpr std::array<const char*, 2> cube_fragment_shader_uniforms{{
+    "objectColor", "lightColor"
 }};
 
 enum Cube_Uniforms{
