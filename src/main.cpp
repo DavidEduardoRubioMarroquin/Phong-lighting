@@ -62,9 +62,9 @@ int main(){
     glUniform3f(shader_uniforms[CUBE_SHADER][OBJECT_COLOR], 1.0f, 1.0f, 1.0f);
     glUniform3f(shader_uniforms[CUBE_SHADER][LIGHT_COLOR], 1.0f, 0.5f, 0.31f);
     glUseProgram(0);
-    
+
     while(!glfwWindowShouldClose(window)){
-        
+
         float currentFrame = static_cast<float>(glfwGetTime());
         deltaTime = lastFrame - currentFrame;
         lastFrame = currentFrame;
