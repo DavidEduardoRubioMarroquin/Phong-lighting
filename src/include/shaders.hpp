@@ -4,6 +4,7 @@ inline const constexpr char* cube_vertex_shader_source{R"(
     #version 330 core
     layout (location = 0) in vec3 aPos;
     layout (location = 1) in vec3 aNormal;
+    layout (location = 2) in vec2 aTexCoords;
 
     uniform mat4 model;
     uniform mat4 view;
@@ -13,11 +14,14 @@ inline const constexpr char* cube_vertex_shader_source{R"(
     out vec3 Normal;
     out vec3 FragPos;
     out vec3 LightPos;
+    out vec2 TexCoords;
     void main(){
         FragPos = vec3(view * model * vec4(aPos, 1.0));
         LightPos = vec3(view * vec4(lightPos, 1.0));
         Normal = mat3(transpose(inverse(view * model)))* aNormal;
         gl_Position = projection * view * model * vec4(aPos, 1.0);
+
+        TexCoords = aTexCoords;
     }
 )"};
 
@@ -28,8 +32,7 @@ inline constexpr std::array<const char *, 4> cube_vertex_shader_uniforms{{
 inline const constexpr char* cube_fragment_shader_source{R"(
     #version 330 core
     struct Material {
-        vec3 ambient;
-        vec3 diffuse;
+        sampler2D diffuse_map;
         vec3 specular;
         float shininess;
     };
@@ -42,6 +45,7 @@ inline const constexpr char* cube_fragment_shader_source{R"(
     in vec3 Normal;
     in vec3 FragPos;
     in vec3 LightPos;
+    in vec2 TexCoords;
 
     uniform Material material;
     uniform Light light;
@@ -50,13 +54,13 @@ inline const constexpr char* cube_fragment_shader_source{R"(
     void main(){
 
         //ambient
-        vec3 ambient = material.ambient * light.ambient;
+        vec3 ambient = vec3(texture(material.diffuse_map, TexCoords)) * light.ambient;
 
         //diffuse
         vec3 norm = normalize(Normal);
         vec3 lightDir = normalize(LightPos - FragPos);
         float diff = max(dot(norm, lightDir), 0.0);
-        vec3 diffuse = (material.diffuse * diff) * light.diffuse;
+        vec3 diffuse = (vec3(texture(material.diffuse_map, TexCoords)) * diff) * light.diffuse;
         
         //specular
         vec3 viewDir = normalize(-FragPos);
@@ -69,10 +73,10 @@ inline const constexpr char* cube_fragment_shader_source{R"(
     }
 )"};
 
-inline constexpr std::array<const char *, 7> cube_fragment_shader_uniforms{{
-    "material.ambient", "material.diffuse", "material.specular", "material.shininess",
+inline constexpr std::array cube_fragment_shader_uniforms{
+    "material.diffuse_map", "material.specular", "material.shininess",
     "light.ambient", "light.diffuse", "light.specular"
-}};
+};
 
 inline const constexpr char* light_fragment_shader_source{R"(
     #version 330 core
@@ -85,9 +89,9 @@ inline const constexpr char* light_fragment_shader_source{R"(
     }
 )"};
 
-inline constexpr std::array<const char *, 1> light_fragment_shader_uniforms{{
+inline constexpr std::array light_fragment_shader_uniforms{
     "LightColor"
-}};
+};
 
 
 

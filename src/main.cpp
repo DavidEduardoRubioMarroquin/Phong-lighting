@@ -5,18 +5,39 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
+
+#pragma warning(disable : 5045)
+#define STB_IMAGE_IMPLEMENTATION
+#include <stb_image.h>
 #pragma warning(pop)
+
 #include <print>
 #include <vector>
 #include <unordered_map>
 #include <string_view>
 #include <array>
 #include <span>
+#include <filesystem>
 
 #include "camera.hpp"
 #include "globals.hpp"
 #include "shaders.hpp"
 
+struct Light{
+    glm::vec3 position;
+    glm::vec3 color;
+    glm::vec3 ambient;
+    glm::vec3 diffuse;
+    glm::vec3 specular;
+};
+
+Light light{
+    {1.2f, 1.0f, 2.0f},
+    glm::vec3{1.0f},
+    glm::vec3{1.0f},
+    glm::vec3{1.0f},
+    glm::vec3{1.0f}
+};
 
 Camera camera{glm::vec3(0.0f, 1.0f, 2.5f)};
 float lastX{Window::g_width/ 2.0f};
@@ -36,15 +57,21 @@ enum Shader_Program{
 std::array<uint32_t, MAX_SHADER_PROGRAMS> shader_programs{};
 std::array<std::unordered_map<std::string_view, int32_t>, MAX_SHADER_PROGRAMS> shader_uniforms{};
 
+enum Textures{
+    CONTAINER_2,
+    MAX_TEX
+};
+std::array<uint32_t, MAX_TEX> texture_ids{};
+
 float deltaTime{0.0f};
 float lastFrame{0.0f};
-
-glm::vec3 lightPos{1.2f, 1.0f, 2.0f};
 
 GLFWwindow* setup_GLFW();
 void process_input(GLFWwindow*);
 void init_buffers();
 void init_shader_programs();
+void load_textures();
+void set_uniform_values();
 
 int main(){
     auto window{setup_GLFW()};
@@ -59,73 +86,64 @@ int main(){
 
     init_buffers();
     init_shader_programs();
-    
-    glUseProgram(shader_programs[CUBE_SHADER]);
-    glUniform3f(shader_uniforms[CUBE_SHADER]["material.ambient"], 1.0f, 0.5f, 0.31f);
-    glUniform3f(shader_uniforms[CUBE_SHADER]["material.diffuse"], 1.0f, 0.5f, 0.31f);
-    glUniform3f(shader_uniforms[CUBE_SHADER]["material.specular"], 0.5f, 0.5f, 0.5f);
-    glUniform1f(shader_uniforms[CUBE_SHADER]["material.shininess"], 32.0f);
-    glUniform3f(shader_uniforms[CUBE_SHADER]["light.specular"], 1.0f, 1.0f, 1.0f);
-    glUseProgram(0);
-    
-    std::println("{}", shader_uniforms[CUBE_SHADER]["material.shininess"]);
-    
-    while(!glfwWindowShouldClose(window)){
+    load_textures();
+    set_uniform_values();
 
+    std::println("Current path -> {}", std::filesystem::current_path().string());
+
+    while(!glfwWindowShouldClose(window)){
         float currentFrame = static_cast<float>(glfwGetTime());
         deltaTime = lastFrame - currentFrame;
         lastFrame = currentFrame;
-        
         process_input(window);
+
+        glm::mat4 projection{glm::perspective(glm::radians(camera.m_zoom),
+        static_cast<float>(Window::g_width)/static_cast<float>(Window::g_height), 0.1f, 100.0f)};
+        glm::mat4 view{camera.getViewMatrix()};
         
         glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         
-        glm::mat4 projection{glm::perspective(glm::radians(camera.m_zoom),
-        static_cast<float>(Window::g_width)/static_cast<float>(Window::g_height), 0.1f, 100.0f)};
-        glm::mat4 view{camera.getViewMatrix()};
-        glm::mat4 model{glm::mat4(1.0f)};
-
-        float sinCurretFrame {std::sinf(currentFrame)};
-
-        glm::vec3 light_color{
-            sinCurretFrame * 2.0f,
-            sinCurretFrame * 0.7f,
-            sinCurretFrame * 1.3f
-        };
-        glm::vec3 diffuse {light_color * glm::vec3(0.5f)};
-        glm::vec3 ambient {light_color * glm::vec3(0.2f)};
-  
+        light.position.x = std::sinf(currentFrame * PI/2);
+        light.position.z = std::cosf(currentFrame * PI/2);
+        
         glUseProgram(shader_programs[CUBE_SHADER]);
         glUniformMatrix4fv(shader_uniforms[CUBE_SHADER]["view"], 1, GL_FALSE, glm::value_ptr(view));
         glUniformMatrix4fv(shader_uniforms[CUBE_SHADER]["projection"], 1, GL_FALSE, glm::value_ptr(projection));
-        glUniformMatrix4fv(shader_uniforms[CUBE_SHADER]["model"], 1, GL_FALSE, glm::value_ptr(model));
-        glUniform3fv(shader_uniforms[CUBE_SHADER]["light.ambient"], 1, glm::value_ptr(ambient));
-        glUniform3fv(shader_uniforms[CUBE_SHADER]["light.diffuse"], 1, glm::value_ptr(diffuse));
-        lightPos.x = std::sinf(currentFrame * PI/2);
-        lightPos.z = std::cosf(currentFrame * PI/2);
-        glUniform3fv(shader_uniforms[CUBE_SHADER]["lightPos"], 1, glm::value_ptr(lightPos));
+        glUniformMatrix4fv(shader_uniforms[CUBE_SHADER]["model"], 1, GL_FALSE, glm::value_ptr(glm::mat4(1.0f)));
+        glUniform3fv(shader_uniforms[CUBE_SHADER]["lightPos"], 1, glm::value_ptr(light.position));
         glBindVertexArray(VAOs[CUBE_VAO]);
-        glDrawArrays(GL_TRIANGLES, 0 ,36);
+        glDrawArrays(GL_TRIANGLES, 0 , 36);
+        
+        glm::mat4 model{glm::mat4(1.0f)};
+        model = glm::translate(model, light.position);
+        model = glm::scale(model, glm::vec3(0.2f));
+        model = glm::rotate(model, currentFrame * PI/2, {0.0, 1.0, 0.0});
         
         glUseProgram(shader_programs[LIGHT_SHADER]);
         glUniformMatrix4fv(shader_uniforms[LIGHT_SHADER]["view"], 1, GL_FALSE, glm::value_ptr(view));
         glUniformMatrix4fv(shader_uniforms[LIGHT_SHADER]["projection"], 1, GL_FALSE, glm::value_ptr(projection));
-        glUniform3fv(shader_uniforms[LIGHT_SHADER]["LightColor"], 1, glm::value_ptr(light_color));
-        model = glm::mat4(1.0f);
-        model = glm::translate(model, lightPos);
-        model = glm::scale(model, glm::vec3(0.2f));
-        model = glm::rotate(model, currentFrame * PI/2, {0.0, 1.0, 0.0});
         glUniformMatrix4fv(shader_uniforms[LIGHT_SHADER]["model"], 1, GL_FALSE, glm::value_ptr(model));
-        
+        glUniform3fv(shader_uniforms[LIGHT_SHADER]["LightColor"], 1, glm::value_ptr(light.color));
         glBindVertexArray(VAOs[LIGHT_VAO]);
         glDrawArrays(GL_TRIANGLES, 0, 36);
         
         glfwSwapBuffers(window);
         glfwPollEvents();
     }
-
+    
     glfwTerminate();
+}
+
+void set_uniform_values(){
+    glUseProgram(shader_programs[CUBE_SHADER]);
+    glUniform1i(shader_uniforms[CUBE_SHADER]["material.diffuse_map"], 0);
+    glUniform3f(shader_uniforms[CUBE_SHADER]["material.specular"], 0.50196078f, 0.50196078f, 0.50196078f);
+    glUniform1f(shader_uniforms[CUBE_SHADER]["material.shininess"], 128.0f * 0.25f);
+    glUniform3fv(shader_uniforms[CUBE_SHADER]["light.ambient"], 1, glm::value_ptr(light.ambient));
+    glUniform3fv(shader_uniforms[CUBE_SHADER]["light.diffuse"], 1, glm::value_ptr(light.diffuse));
+    glUniform3fv(shader_uniforms[CUBE_SHADER]["light.specular"], 1, glm::value_ptr(light.specular));
+    glUseProgram(0); 
 }
 
 void fill_uniforms(Shader_Program program, std::span<const char* const> uniforms){
@@ -193,8 +211,8 @@ void init_buffers(){
     };
     std::array<uint32_t, MAX_VBOS> VBOs{};
 
-    glGenVertexArrays(2, VAOs.data());
-    glGenBuffers(1, VBOs.data());
+    glGenVertexArrays(MAX_VAOS, VAOs.data());
+    glGenBuffers(MAX_VBOS, VBOs.data());
 
     glBindBuffer(GL_ARRAY_BUFFER, VBOs[CUBE_VERTICES]);
     glBufferData(GL_ARRAY_BUFFER, sizeof(cube_vertices), cube_vertices, GL_STATIC_DRAW);
@@ -202,13 +220,51 @@ void init_buffers(){
     for(uint32_t VAO : VAOs){
         glBindVertexArray(VAO);
         glBindBuffer(GL_ARRAY_BUFFER,VBOs[CUBE_VERTICES]);
-        glVertexAttribPointer(0, 3, GL_FLOAT, false, sizeof(float) * 6, (void*)0);
+        glVertexAttribPointer(0, 3, GL_FLOAT, false, sizeof(float) * 8, (void*)0);
         glEnableVertexAttribArray(0);
     }
 
     glBindVertexArray(VAOs[CUBE_VAO]);
-    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)(3 * sizeof(float)));
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(3 * sizeof(float)));
     glEnableVertexAttribArray(1);
+    glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(6 * sizeof(float)));
+    glEnableVertexAttribArray(2);
+}
+
+void load_texture(Textures texture, const char* tex_path){
+    int32_t width, height, nr_channels;
+    uint8_t* data {stbi_load(tex_path, &width, &height, &nr_channels, 0)};
+    
+    if(data){
+        GLenum format{};
+        switch(nr_channels){
+            case 3: format = GL_RGB; break;
+            case 4: format = GL_RGBA; break;
+            default: format = GL_RED; break;
+        }
+        
+        glBindTexture(GL_TEXTURE_2D, texture_ids[texture]);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, format, GL_UNSIGNED_BYTE, data);
+        glGenerateMipmap(GL_TEXTURE_2D);
+
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+    }else{
+        std::println("Failed to load texture at ({}).", tex_path);
+    }
+
+    stbi_image_free(data);
+}
+
+void load_textures(){
+    glGenBuffers(MAX_TEX, texture_ids.data());
+    stbi_set_flip_vertically_on_load(true);
+
+    glActiveTexture(GL_TEXTURE0);
+    load_texture(CONTAINER_2, "./textures/container2.png");
 }
 
 void process_input(GLFWwindow* window){

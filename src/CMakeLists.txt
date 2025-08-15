@@ -18,3 +18,5 @@ target_link_libraries(${CMAKE_PROJECT_NAME} PRIVATE
 target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
     include
 )
+
+configure_file(textures/container2.png textures/container2.png COPYONLY)
