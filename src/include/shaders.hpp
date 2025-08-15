@@ -21,64 +21,73 @@ inline const constexpr char* cube_vertex_shader_source{R"(
     }
 )"};
 
-inline constexpr std::array<const char*, 4> cube_vertex_shader_uniforms{{
+inline constexpr std::array<const char *, 4> cube_vertex_shader_uniforms{{
     "model", "view", "projection", "lightPos"
 }};
 
 inline const constexpr char* cube_fragment_shader_source{R"(
     #version 330 core
+    struct Material {
+        vec3 ambient;
+        vec3 diffuse;
+        vec3 specular;
+        float shininess;
+    };
+    struct Light {
+        vec3 ambient;
+        vec3 diffuse;
+        vec3 specular;
+    };
+
     in vec3 Normal;
     in vec3 FragPos;
     in vec3 LightPos;
 
-    uniform vec3 objectColor;
-    uniform vec3 lightColor;
+    uniform Material material;
+    uniform Light light;
 
     out vec4 FragColor;
     void main(){
-        //constants 
-        float specularStrength = 0.9;
-        float ambientStrength = 0.05;
-        float diffuseStrength = 0.5;
 
         //ambient
-        vec3 ambient = ambientStrength * lightColor;
+        vec3 ambient = material.ambient * light.ambient;
 
         //diffuse
         vec3 norm = normalize(Normal);
         vec3 lightDir = normalize(LightPos - FragPos);
         float diff = max(dot(norm, lightDir), 0.0);
-        vec3 diffuse = diffuseStrength * diff * lightColor;
+        vec3 diffuse = (material.diffuse * diff) * light.diffuse;
         
         //specular
         vec3 viewDir = normalize(-FragPos);
         vec3 reflectDir = reflect(-lightDir, norm);
-        float spec = pow(max(dot(viewDir, reflectDir), 0.0), 8);
+        float spec = pow(max(dot(viewDir, reflectDir), 0.0), material.shininess);
+        vec3 specular = (material.specular * spec) * light.specular;
 
-        vec3 specular = specularStrength * spec * lightColor;
-        vec3 result = (ambient + diffuse + specular) * objectColor;
+        vec3 result = ambient + diffuse + specular;
         FragColor = vec4(result, 1.0);
     }
 )"};
 
-inline constexpr std::array<const char*, 2> cube_fragment_shader_uniforms{{
-    "objectColor", "lightColor"
+inline constexpr std::array<const char *, 7> cube_fragment_shader_uniforms{{
+    "material.ambient", "material.diffuse", "material.specular", "material.shininess",
+    "light.ambient", "light.diffuse", "light.specular"
 }};
 
-enum Cube_Uniforms{
-    MODEL,
-    VIEW,
-    PROJECTION,
-    LIGHT_POS,
-    OBJECT_COLOR,
-    LIGHT_COLOR,
-};
+inline const constexpr char* light_fragment_shader_source{R"(
+    #version 330 core
 
-inline const constexpr char* light_fragment_shader_source{
-    "#version 330 core\n"
-    "out vec4 FragColor;\n"
-    "void main(){\n"
-    "FragColor = vec4(1.0);}\n"
-};
+    uniform vec3 LightColor;
+
+    out vec4 FragColor;
+    void main(){
+        FragColor = vec4(LightColor, 1.0);
+    }
+)"};
+
+inline constexpr std::array<const char *, 1> light_fragment_shader_uniforms{{
+    "LightColor"
+}};
+
 
 

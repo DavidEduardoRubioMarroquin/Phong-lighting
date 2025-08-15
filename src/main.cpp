@@ -8,12 +8,15 @@
 #pragma warning(pop)
 #include <print>
 #include <vector>
+#include <unordered_map>
+#include <string_view>
 #include <array>
 #include <span>
 
 #include "camera.hpp"
 #include "globals.hpp"
 #include "shaders.hpp"
+
 
 Camera camera{glm::vec3(0.0f, 1.0f, 2.5f)};
 float lastX{Window::g_width/ 2.0f};
@@ -31,13 +34,12 @@ enum Shader_Program{
     LIGHT_SHADER,
     MAX_SHADER_PROGRAMS};
 std::array<uint32_t, MAX_SHADER_PROGRAMS> shader_programs{};
-std::array<std::vector<int32_t>, MAX_SHADER_PROGRAMS> shader_uniforms{};
+std::array<std::unordered_map<std::string_view, int32_t>, MAX_SHADER_PROGRAMS> shader_uniforms{};
 
 float deltaTime{0.0f};
 float lastFrame{0.0f};
 
 glm::vec3 lightPos{1.2f, 1.0f, 2.0f};
-
 
 GLFWwindow* setup_GLFW();
 void process_input(GLFWwindow*);
@@ -57,12 +59,17 @@ int main(){
 
     init_buffers();
     init_shader_programs();
-
+    
     glUseProgram(shader_programs[CUBE_SHADER]);
-    glUniform3f(shader_uniforms[CUBE_SHADER][OBJECT_COLOR], 1.0f, 1.0f, 1.0f);
-    glUniform3f(shader_uniforms[CUBE_SHADER][LIGHT_COLOR], 1.0f, 0.5f, 0.31f);
+    glUniform3f(shader_uniforms[CUBE_SHADER]["material.ambient"], 1.0f, 0.5f, 0.31f);
+    glUniform3f(shader_uniforms[CUBE_SHADER]["material.diffuse"], 1.0f, 0.5f, 0.31f);
+    glUniform3f(shader_uniforms[CUBE_SHADER]["material.specular"], 0.5f, 0.5f, 0.5f);
+    glUniform1f(shader_uniforms[CUBE_SHADER]["material.shininess"], 32.0f);
+    glUniform3f(shader_uniforms[CUBE_SHADER]["light.specular"], 1.0f, 1.0f, 1.0f);
     glUseProgram(0);
-
+    
+    std::println("{}", shader_uniforms[CUBE_SHADER]["material.shininess"]);
+    
     while(!glfwWindowShouldClose(window)){
 
         float currentFrame = static_cast<float>(glfwGetTime());
@@ -78,25 +85,38 @@ int main(){
         static_cast<float>(Window::g_width)/static_cast<float>(Window::g_height), 0.1f, 100.0f)};
         glm::mat4 view{camera.getViewMatrix()};
         glm::mat4 model{glm::mat4(1.0f)};
-            
+
+        float sinCurretFrame {std::sinf(currentFrame)};
+
+        glm::vec3 light_color{
+            sinCurretFrame * 2.0f,
+            sinCurretFrame * 0.7f,
+            sinCurretFrame * 1.3f
+        };
+        glm::vec3 diffuse {light_color * glm::vec3(0.5f)};
+        glm::vec3 ambient {light_color * glm::vec3(0.2f)};
+  
         glUseProgram(shader_programs[CUBE_SHADER]);
-        glUniformMatrix4fv(shader_uniforms[CUBE_SHADER][VIEW], 1, GL_FALSE, glm::value_ptr(view));
-        glUniformMatrix4fv(shader_uniforms[CUBE_SHADER][PROJECTION], 1, GL_FALSE, glm::value_ptr(projection));
-        glUniformMatrix4fv(shader_uniforms[CUBE_SHADER][MODEL], 1, GL_FALSE, glm::value_ptr(model));
+        glUniformMatrix4fv(shader_uniforms[CUBE_SHADER]["view"], 1, GL_FALSE, glm::value_ptr(view));
+        glUniformMatrix4fv(shader_uniforms[CUBE_SHADER]["projection"], 1, GL_FALSE, glm::value_ptr(projection));
+        glUniformMatrix4fv(shader_uniforms[CUBE_SHADER]["model"], 1, GL_FALSE, glm::value_ptr(model));
+        glUniform3fv(shader_uniforms[CUBE_SHADER]["light.ambient"], 1, glm::value_ptr(ambient));
+        glUniform3fv(shader_uniforms[CUBE_SHADER]["light.diffuse"], 1, glm::value_ptr(diffuse));
         lightPos.x = std::sinf(currentFrame * PI/2);
         lightPos.z = std::cosf(currentFrame * PI/2);
-        glUniform3fv(shader_uniforms[CUBE_SHADER][LIGHT_POS], 1, glm::value_ptr(lightPos));
+        glUniform3fv(shader_uniforms[CUBE_SHADER]["lightPos"], 1, glm::value_ptr(lightPos));
         glBindVertexArray(VAOs[CUBE_VAO]);
         glDrawArrays(GL_TRIANGLES, 0 ,36);
         
         glUseProgram(shader_programs[LIGHT_SHADER]);
-        glUniformMatrix4fv(shader_uniforms[LIGHT_SHADER][VIEW], 1, GL_FALSE, glm::value_ptr(view));
-        glUniformMatrix4fv(shader_uniforms[LIGHT_SHADER][PROJECTION], 1, GL_FALSE, glm::value_ptr(projection));
+        glUniformMatrix4fv(shader_uniforms[LIGHT_SHADER]["view"], 1, GL_FALSE, glm::value_ptr(view));
+        glUniformMatrix4fv(shader_uniforms[LIGHT_SHADER]["projection"], 1, GL_FALSE, glm::value_ptr(projection));
+        glUniform3fv(shader_uniforms[LIGHT_SHADER]["LightColor"], 1, glm::value_ptr(light_color));
         model = glm::mat4(1.0f);
         model = glm::translate(model, lightPos);
         model = glm::scale(model, glm::vec3(0.2f));
         model = glm::rotate(model, currentFrame * PI/2, {0.0, 1.0, 0.0});
-        glUniformMatrix4fv(shader_uniforms[LIGHT_SHADER][MODEL], 1, GL_FALSE, glm::value_ptr(model));
+        glUniformMatrix4fv(shader_uniforms[LIGHT_SHADER]["model"], 1, GL_FALSE, glm::value_ptr(model));
         
         glBindVertexArray(VAOs[LIGHT_VAO]);
         glDrawArrays(GL_TRIANGLES, 0, 36);
@@ -110,7 +130,7 @@ int main(){
 
 void fill_uniforms(Shader_Program program, std::span<const char* const> uniforms){
     for(const char* uniform : uniforms){
-        shader_uniforms[program].push_back(glGetUniformLocation(shader_programs[program], uniform));
+        shader_uniforms[program].emplace(uniform, glGetUniformLocation(shader_programs[program], uniform));
     }
 }
 
@@ -158,6 +178,7 @@ void init_shader_programs(){
     fill_uniforms(CUBE_SHADER, cube_vertex_shader_uniforms);
     fill_uniforms(CUBE_SHADER, cube_fragment_shader_uniforms);
     fill_uniforms(LIGHT_SHADER, cube_vertex_shader_uniforms);
+    fill_uniforms(LIGHT_SHADER, light_fragment_shader_uniforms);
 
     
     glDeleteShader(cube_vertex);
