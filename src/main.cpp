@@ -17,7 +17,6 @@
 #include <string_view>
 #include <array>
 #include <span>
-#include <filesystem>
 
 #include "camera.hpp"
 #include "globals.hpp"
@@ -34,9 +33,9 @@ struct Light{
 Light light{
     {1.2f, 1.0f, 2.0f},
     glm::vec3{1.0f},
-    glm::vec3{1.0f},
-    glm::vec3{1.0f},
-    glm::vec3{1.0f}
+    {1.0f, 1.0f, 1.0f},
+    {1.0f, 1.0f, 1.0f},
+    {1.0f, 1.0f, 1.0f}
 };
 
 Camera camera{glm::vec3(0.0f, 1.0f, 2.5f)};
@@ -59,6 +58,8 @@ std::array<std::unordered_map<std::string_view, int32_t>, MAX_SHADER_PROGRAMS> s
 
 enum Textures{
     CONTAINER_2,
+    CONTAINER_2_SPEC,
+    CONTAINER_2_EM,
     MAX_TEX
 };
 std::array<uint32_t, MAX_TEX> texture_ids{};
@@ -89,8 +90,6 @@ int main(){
     load_textures();
     set_uniform_values();
 
-    std::println("Current path -> {}", std::filesystem::current_path().string());
-
     while(!glfwWindowShouldClose(window)){
         float currentFrame = static_cast<float>(glfwGetTime());
         deltaTime = lastFrame - currentFrame;
@@ -107,6 +106,13 @@ int main(){
         light.position.x = std::sinf(currentFrame * PI/2);
         light.position.z = std::cosf(currentFrame * PI/2);
         
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, texture_ids[CONTAINER_2]);
+        glActiveTexture(GL_TEXTURE1);
+        glBindTexture(GL_TEXTURE_2D, texture_ids[CONTAINER_2_SPEC]);
+        glActiveTexture(GL_TEXTURE2);
+        glBindTexture(GL_TEXTURE_2D, texture_ids[CONTAINER_2_EM]);
+
         glUseProgram(shader_programs[CUBE_SHADER]);
         glUniformMatrix4fv(shader_uniforms[CUBE_SHADER]["view"], 1, GL_FALSE, glm::value_ptr(view));
         glUniformMatrix4fv(shader_uniforms[CUBE_SHADER]["projection"], 1, GL_FALSE, glm::value_ptr(projection));
@@ -138,8 +144,9 @@ int main(){
 void set_uniform_values(){
     glUseProgram(shader_programs[CUBE_SHADER]);
     glUniform1i(shader_uniforms[CUBE_SHADER]["material.diffuse_map"], 0);
-    glUniform3f(shader_uniforms[CUBE_SHADER]["material.specular"], 0.50196078f, 0.50196078f, 0.50196078f);
-    glUniform1f(shader_uniforms[CUBE_SHADER]["material.shininess"], 128.0f * 0.25f);
+    glUniform1i(shader_uniforms[CUBE_SHADER]["material.specular_map"], 1);
+    glUniform1i(shader_uniforms[CUBE_SHADER]["material.emission_map"], 2);
+    glUniform1f(shader_uniforms[CUBE_SHADER]["material.shininess"], 32.0f);
     glUniform3fv(shader_uniforms[CUBE_SHADER]["light.ambient"], 1, glm::value_ptr(light.ambient));
     glUniform3fv(shader_uniforms[CUBE_SHADER]["light.diffuse"], 1, glm::value_ptr(light.diffuse));
     glUniform3fv(shader_uniforms[CUBE_SHADER]["light.specular"], 1, glm::value_ptr(light.specular));
@@ -197,7 +204,6 @@ void init_shader_programs(){
     fill_uniforms(CUBE_SHADER, cube_fragment_shader_uniforms);
     fill_uniforms(LIGHT_SHADER, cube_vertex_shader_uniforms);
     fill_uniforms(LIGHT_SHADER, light_fragment_shader_uniforms);
-
     
     glDeleteShader(cube_vertex);
     glDeleteShader(cube_fragment);
@@ -231,7 +237,10 @@ void init_buffers(){
     glEnableVertexAttribArray(2);
 }
 
-void load_texture(Textures texture, const char* tex_path){
+uint32_t load_texture(const char* tex_path){
+    uint32_t texture_id;
+    glGenTextures(1, &texture_id);
+
     int32_t width, height, nr_channels;
     uint8_t* data {stbi_load(tex_path, &width, &height, &nr_channels, 0)};
     
@@ -243,8 +252,8 @@ void load_texture(Textures texture, const char* tex_path){
             default: format = GL_RED; break;
         }
         
-        glBindTexture(GL_TEXTURE_2D, texture_ids[texture]);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, format, GL_UNSIGNED_BYTE, data);
+        glBindTexture(GL_TEXTURE_2D, texture_id);
+        glTexImage2D(GL_TEXTURE_2D, 0, static_cast<int32_t>(format), width, height, 0, format, GL_UNSIGNED_BYTE, data);
         glGenerateMipmap(GL_TEXTURE_2D);
 
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
@@ -257,14 +266,15 @@ void load_texture(Textures texture, const char* tex_path){
     }
 
     stbi_image_free(data);
+    return texture_id;
 }
 
 void load_textures(){
-    glGenBuffers(MAX_TEX, texture_ids.data());
     stbi_set_flip_vertically_on_load(true);
 
-    glActiveTexture(GL_TEXTURE0);
-    load_texture(CONTAINER_2, "./textures/container2.png");
+    texture_ids[CONTAINER_2] = load_texture("textures/container2.png");
+    texture_ids[CONTAINER_2_SPEC] = load_texture("textures/container2_specular.png");
+    texture_ids[CONTAINER_2_EM] = load_texture("textures/container2_emission.jpg");
 }
 
 void process_input(GLFWwindow* window){

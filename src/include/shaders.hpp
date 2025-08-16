@@ -31,11 +31,14 @@ inline constexpr std::array<const char *, 4> cube_vertex_shader_uniforms{{
 
 inline const constexpr char* cube_fragment_shader_source{R"(
     #version 330 core
+
     struct Material {
         sampler2D diffuse_map;
-        vec3 specular;
+        sampler2D specular_map;
+        sampler2D emission_map;
         float shininess;
     };
+
     struct Light {
         vec3 ambient;
         vec3 diffuse;
@@ -52,31 +55,26 @@ inline const constexpr char* cube_fragment_shader_source{R"(
 
     out vec4 FragColor;
     void main(){
-
-        //ambient
-        vec3 ambient = vec3(texture(material.diffuse_map, TexCoords)) * light.ambient;
-
-        //diffuse
         vec3 norm = normalize(Normal);
         vec3 lightDir = normalize(LightPos - FragPos);
         float diff = max(dot(norm, lightDir), 0.0);
-        vec3 diffuse = (vec3(texture(material.diffuse_map, TexCoords)) * diff) * light.diffuse;
         
-        //specular
         vec3 viewDir = normalize(-FragPos);
         vec3 reflectDir = reflect(-lightDir, norm);
         float spec = pow(max(dot(viewDir, reflectDir), 0.0), material.shininess);
-        vec3 specular = (material.specular * spec) * light.specular;
 
-        vec3 result = ambient + diffuse + specular;
-        FragColor = vec4(result, 1.0);
+        vec3 ambient  = light.ambient  * vec3(texture(material.diffuse_map, TexCoords));
+        vec3 diffuse  = light.diffuse  * diff * vec3(texture(material.diffuse_map, TexCoords));  
+        vec3 specular = light.specular * spec * vec3(texture(material.specular_map, TexCoords));
+        vec3 emission = texture(material.emission_map, TexCoords).rgb;
+        FragColor = vec4(ambient + diffuse + specular + emission, 1.0);   
     }
 )"};
 
-inline constexpr std::array cube_fragment_shader_uniforms{
-    "material.diffuse_map", "material.specular", "material.shininess",
+inline constexpr std::array<const char*, 7> cube_fragment_shader_uniforms{{
+    "material.diffuse_map", "material.specular_map", "material.shininess", "material.emission_map",
     "light.ambient", "light.diffuse", "light.specular"
-};
+}};
 
 inline const constexpr char* light_fragment_shader_source{R"(
     #version 330 core
@@ -89,9 +87,9 @@ inline const constexpr char* light_fragment_shader_source{R"(
     }
 )"};
 
-inline constexpr std::array light_fragment_shader_uniforms{
+inline constexpr std::array<const char*, 1> light_fragment_shader_uniforms{{
     "LightColor"
-};
+}};
 
 
 
