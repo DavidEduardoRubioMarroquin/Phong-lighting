@@ -1,3 +1,4 @@
+
 #pragma warning(push, 0)
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
@@ -23,7 +24,7 @@
 #include "shaders.hpp"
 
 struct Light{
-    glm::vec3 position;
+    glm::vec3 direction;
     glm::vec3 color;
     glm::vec3 ambient;
     glm::vec3 diffuse;
@@ -31,11 +32,11 @@ struct Light{
 };
 
 Light light{
-    {1.2f, 1.0f, 2.0f},
+    {0.0f, -1.0f, -0.0f},
     glm::vec3{1.0f},
-    {1.0f, 1.0f, 1.0f},
-    {1.0f, 1.0f, 1.0f},
-    {1.0f, 1.0f, 1.0f}
+    {0.0f, 1.0f, 0.0f},
+    {1.0f, 0.0f, 0.0f},
+    {0.0f, 0.0f, 1.0f}
 };
 
 Camera camera{glm::vec3(0.0f, 1.0f, 2.5f)};
@@ -90,21 +91,33 @@ int main(){
     load_textures();
     set_uniform_values();
 
+    glm::vec3 cube_positions[] = {
+        glm::vec3( 0.0f,  0.0f,  0.0f),
+        glm::vec3( 2.0f,  5.0f, -15.0f),
+        glm::vec3(-1.5f, -2.2f, -2.5f),
+        glm::vec3(-3.8f, -2.0f, -12.3f),
+        glm::vec3( 2.4f, -0.4f, -3.5f),
+        glm::vec3(-1.7f,  3.0f, -7.5f),
+        glm::vec3( 1.3f, -2.0f, -2.5f),
+        glm::vec3( 1.5f,  2.0f, -2.5f),
+        glm::vec3( 1.5f,  0.2f, -1.5f),
+        glm::vec3(-1.3f,  1.0f, -1.5f)
+    };
+
     while(!glfwWindowShouldClose(window)){
         float currentFrame = static_cast<float>(glfwGetTime());
         deltaTime = lastFrame - currentFrame;
         lastFrame = currentFrame;
         process_input(window);
-
+        
+        //std::println("{}", camera.m_cameraPos.x);
+        
         glm::mat4 projection{glm::perspective(glm::radians(camera.m_zoom),
         static_cast<float>(Window::g_width)/static_cast<float>(Window::g_height), 0.1f, 100.0f)};
         glm::mat4 view{camera.getViewMatrix()};
         
         glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-        
-        light.position.x = std::sinf(currentFrame * PI/2);
-        light.position.z = std::cosf(currentFrame * PI/2);
         
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, texture_ids[CONTAINER_2]);
@@ -113,16 +126,27 @@ int main(){
         glActiveTexture(GL_TEXTURE2);
         glBindTexture(GL_TEXTURE_2D, texture_ids[CONTAINER_2_EM]);
 
+        glm::mat4 model{1.0f};
         glUseProgram(shader_programs[CUBE_SHADER]);
         glUniformMatrix4fv(shader_uniforms[CUBE_SHADER]["view"], 1, GL_FALSE, glm::value_ptr(view));
+        glUniform3fv(shader_uniforms[CUBE_SHADER]["viewPos"], 1, glm::value_ptr(camera.m_cameraPos));
         glUniformMatrix4fv(shader_uniforms[CUBE_SHADER]["projection"], 1, GL_FALSE, glm::value_ptr(projection));
-        glUniformMatrix4fv(shader_uniforms[CUBE_SHADER]["model"], 1, GL_FALSE, glm::value_ptr(glm::mat4(1.0f)));
-        glUniform3fv(shader_uniforms[CUBE_SHADER]["lightPos"], 1, glm::value_ptr(light.position));
+        glUniform3fv(shader_uniforms[CUBE_SHADER]["light.direction"], 1, glm::value_ptr(light.direction));
         glBindVertexArray(VAOs[CUBE_VAO]);
-        glDrawArrays(GL_TRIANGLES, 0 , 36);
+
+        int32_t model_id = shader_uniforms[CUBE_SHADER]["model"];
+        for(size_t i{}; i < std::size(cube_positions); ++i){
+            model = glm::mat4{1.0f};\
+            model = glm::translate(model, cube_positions[i]);
+            float angle = static_cast<float>(20 * i);
+            model = glm::rotate(model, glm::radians(angle), {1.0f, 0.3f, 1.5f});
+            glUniformMatrix4fv(model_id, 1, GL_FALSE, glm::value_ptr(model));
+
+            glDrawArrays(GL_TRIANGLES, 0 , 36);
+        }
         
-        glm::mat4 model{glm::mat4(1.0f)};
-        model = glm::translate(model, light.position);
+        model = glm::mat4(1.0f);
+        model = glm::translate(model, -light.direction);
         model = glm::scale(model, glm::vec3(0.2f));
         model = glm::rotate(model, currentFrame * PI/2, {0.0, 1.0, 0.0});
         
